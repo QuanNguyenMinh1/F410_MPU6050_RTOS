@@ -18,6 +18,7 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+//#include "cmsis_os.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -33,8 +34,7 @@
 
 #include "mpu6050.h"
 #include "i2c.h"
-//#include <stdint.h>
-//#include "math.h"
+
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -53,6 +53,8 @@
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
+//extern I2C_HandleTypeDef hi2c1;
+
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
@@ -119,13 +121,14 @@ UART_HandleTypeDef huart2;
 //} MPU6050_t;
 //
 MPU6050_t mpu6050_data;
-
+uint8_t stat = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_USART2_UART_Init(void);
+//extern void MX_I2C1_Init(void);
 
 /* USER CODE BEGIN PFP */
 
@@ -134,23 +137,15 @@ static void MX_USART2_UART_Init(void);
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 xQueueHandle St_Queue_Handler;
-//
-//xTaskHandle Sender1_Task_Handler;
-//xTaskHandle Sender2_Task_Handler;
+
 xTaskHandle MPU6050ReadAll_Task_Handler;
 
 xTaskHandle Receiver_Task_Handler;
-//
-//
-//void Sender1_Task(void *argument);
-//void Sender2_Task(void *argument);
+
 void Receiver_Task(void *argument);
 void MPU6050ReadAll_Task(void *argument);
 /**************** STRUCTURE DEFINITION *****************/
 
-
-int indx1 = 0;
-int indx2 = 0;
 /* USER CODE END 0 */
 
 /**
@@ -169,8 +164,7 @@ int main(void)
   HAL_Init();
 
   /* USER CODE BEGIN Init */
-  MPU6050_Init(&hi2c1);
-
+//  while (MPU6050_Init(&hi2c1) == 1);
   /* USER CODE END Init */
 
   /* Configure the system clock */
@@ -186,23 +180,13 @@ int main(void)
   MX_I2C1_Init();
   /* USER CODE BEGIN 2 */
 St_Queue_Handler = xQueueCreate(2, sizeof(MPU6050_t));
-if (St_Queue_Handler == 0)	//Queue not created
-{
-	  char *str = "Unable to create Structured Queue\n\n";
-	  HAL_UART_Transmit(&huart2, (uint8_t *)str, strlen(str), HAL_MAX_DELAY);
-}
-else
-{
-	  char *str = "Structured Queue created successfully\n\n";
-	  HAL_UART_Transmit(&huart2, (uint8_t *)str, strlen(str), HAL_MAX_DELAY);
-}
-
-//xTaskCreate(Sender1_Task, "SENDER1", 128, NULL, 2, &Sender1_Task_Handler);
-//xTaskCreate(Sender2_Task, "SENDER2", 128, NULL, 2, &Sender2_Task_Handler);
 xTaskCreate(Receiver_Task, "RECEIVER", 128, NULL, 1, &Receiver_Task_Handler);
 xTaskCreate(MPU6050ReadAll_Task, "MPU6050READALL", 128, NULL, 2, &MPU6050ReadAll_Task_Handler);
 
 vTaskStartScheduler();
+//  while (MPU6050_Init(&hi2c1) == 1);
+  stat = MPU6050_Init(&hi2c1);
+
   /* USER CODE END 2 */
 
   /* We should never get here as control is now taken by the scheduler */
@@ -213,6 +197,9 @@ vTaskStartScheduler();
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+//	  mpu6050_data = MPU6050_Read_All();
+//	  HAL_Delay (100);
+
   }
   /* USER CODE END 3 */
 }
@@ -234,13 +221,12 @@ void SystemClock_Config(void)
   /** Initializes the RCC Oscillators according to the specified parameters
   * in the RCC_OscInitTypeDef structure.
   */
-  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
-  RCC_OscInitStruct.HSIState = RCC_HSI_ON;
-  RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
+  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE;
+  RCC_OscInitStruct.HSEState = RCC_HSE_ON;
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
-  RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSI;
-  RCC_OscInitStruct.PLL.PLLM = 8;
-  RCC_OscInitStruct.PLL.PLLN = 100;
+  RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
+  RCC_OscInitStruct.PLL.PLLM = 4;
+  RCC_OscInitStruct.PLL.PLLN = 72;
   RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV2;
   RCC_OscInitStruct.PLL.PLLQ = 4;
   RCC_OscInitStruct.PLL.PLLR = 2;
@@ -254,11 +240,11 @@ void SystemClock_Config(void)
   RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
                               |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
   RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
-  RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
-  RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV2;
+  RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV2;
+  RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV4;
   RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
 
-  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_3) != HAL_OK)
+  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_1) != HAL_OK)
   {
     Error_Handler();
   }
@@ -318,48 +304,15 @@ static void MX_GPIO_Init(void)
 
 /* USER CODE BEGIN 4 */
 
-//uint8_t MPU6050Init_Task(I2C_HandleTypeDef *I2Cx) {
-//    uint8_t check;
-//    uint8_t Data;
-//
-//    // check device ID WHO_AM_I
-//
-//    HAL_I2C_Mem_Read(I2Cx, MPU6050_ADDR, WHO_AM_I_REG, 1, &check, 1, i2c_timeout);
-//
-//    if (check == 104)  // 0x68 will be returned by the sensor if everything goes well
-//    {
-//        // power management register 0X6B we should write all 0's to wake the sensor up
-//        Data = 0;
-//        HAL_I2C_Mem_Write(I2Cx, MPU6050_ADDR, PWR_MGMT_1_REG, 1, &Data, 1, i2c_timeout);
-//
-//        // Set DATA RATE of 1KHz by writing SMPLRT_DIV register
-//        Data = 0x07;
-//        HAL_I2C_Mem_Write(I2Cx, MPU6050_ADDR, SMPLRT_DIV_REG, 1, &Data, 1, i2c_timeout);
-//
-//        // Set accelerometer configuration in ACCEL_CONFIG Register
-//        // XA_ST=0,YA_ST=0,ZA_ST=0, FS_SEL=0 -> � 2g
-//        Data = 0x00;
-//        HAL_I2C_Mem_Write(I2Cx, MPU6050_ADDR, ACCEL_CONFIG_REG, 1, &Data, 1, i2c_timeout);
-//
-//        // Set Gyroscopic configuration in GYRO_CONFIG Register
-//        // XG_ST=0,YG_ST=0,ZG_ST=0, FS_SEL=0 -> � 250 �/s
-//        Data = 0x00;
-//        HAL_I2C_Mem_Write(I2Cx, MPU6050_ADDR, GYRO_CONFIG_REG, 1, &Data, 1, i2c_timeout);
-//        return 0;
-//    }
-//    return 1;
-//}
 void MPU6050ReadAll_Task (void *argument)
 {
-	uint32_t TickDelay = pdMS_TO_TICKS(2000);
+	uint32_t TickDelay = pdMS_TO_TICKS(3000);
 	while(1)
 	{
 		mpu6050_data = MPU6050_Read_All();
 
 		MPU6050_t *ptrtostruct;
 
-		char *str = "Entered MPU6050READALL_Task\n about to SEND to the queue\n\n";
-		HAL_UART_Transmit(&huart2, (uint8_t *)str, strlen (str), HAL_MAX_DELAY);
 		/****** ALOOCATE MEMORY TO THE PTR ********/
 		ptrtostruct = pvPortMalloc(sizeof (MPU6050_t));
 		/********** LOAD THE DATA ***********/
@@ -378,130 +331,39 @@ void MPU6050ReadAll_Task (void *argument)
 		ptrtostruct->Gx = mpu6050_data.Gx;
 		ptrtostruct->Gy = mpu6050_data.Gy;
 		ptrtostruct->Gz = mpu6050_data.Gz;
-
-		/***** send to the queue ****/
-		if (xQueueSend(St_Queue_Handler, &ptrtostruct, portMAX_DELAY) == pdPASS)
-		{
-		char *str2 = " Successfully sent the to the queue\nLeaving MPU6050ReadAll_Task\n\n\n";
-		HAL_UART_Transmit(&huart2, (uint8_t *)str2, strlen (str2), HAL_MAX_DELAY);
-		}
-//		indx1 = indx1+1;
+////
+////		/***** send to the queue ****/
+//////		if (ptrtostruct != NULL)
+//////		{
+//			xQueueSend(St_Queue_Handler, &ptrtostruct, portMAX_DELAY);
+//////		}
+////		if (xQueueSend(St_Queue_Handler, &ptrtostruct, portMAX_DELAY) == pdPASS)
+////		{
+//////		char *str2 = " Successfully sent the to the queue\nLeaving MPU6050ReadAll_Task\n\n\n";
+//////		HAL_UART_Transmit(&huart2, (uint8_t *)str2, strlen (str2), HAL_MAX_DELAY);
+////		}
 		vTaskDelay(TickDelay);
 	}
 }
-//void Sender1_Task (void *argument)
-//{
-////	MPU6050_t *ptrtostruct;
-////	uint32_t TickDelay = pdMS_TO_TICKS(2000);
-////	while (1)
-////	{
-////	char *str = "Entered SENDER1_Task\n about to SEND to the queue\n\n";
-////	HAL_UART_Transmit(&huart2, (uint8_t *)str, strlen (str), HAL_MAX_DELAY);
-////	/****** ALOOCATE MEMORY TO THE PTR ********/
-////	ptrtostruct = pvPortMalloc(sizeof (MPU6050_t));
-////	/********** LOAD THE DATA ***********/
-////	ptrtostruct->counter = 1+indx1;
-////	ptrtostruct->large_value = 1000 + indx1*100;
-////	ptrtostruct->str = "HELLO FROM SENDER 1 ";
-////	/***** send to the queue ****/
-////	if (xQueueSend(St_Queue_Handler, &ptrtostruct, portMAX_DELAY) == pdPASS)
-////	{
-////	char *str2 = " Successfully sent the to the queue\nLeaving SENDER1_Task\n\n\n";
-////	HAL_UART_Transmit(&huart2, (uint8_t *)str2, strlen (str2), HAL_MAX_DELAY);
-////	}
-////	indx1 = indx1+1;
-////	vTaskDelay(TickDelay);
-////	}
-//}
-
-//void Sender2_Task (void *argument)
-//{
-////	MPU6050_t *ptrtostruct;
-////	uint32_t TickDelay = pdMS_TO_TICKS(2000);
-////	while (1)
-////	{
-////	char *str = "Entered SENDER2_Task\n about to SEND to the queue\n\n";
-////	HAL_UART_Transmit(&huart2, (uint8_t *)str, strlen (str), HAL_MAX_DELAY);
-////	/****** ALOOCATE MEMORY TO THE PTR ********/
-////	ptrtostruct = pvPortMalloc(sizeof (MPU6050_t));
-////	/********** LOAD THE DATA ***********/
-////	ptrtostruct->counter = 1+indx1;
-////	ptrtostruct->large_value = 1000 + indx1*100;
-////	ptrtostruct->str = "SENDER 2 says Hi!!! ";
-////	/***** send to the queue ****/
-////	if (xQueueSend(St_Queue_Handler, &ptrtostruct, portMAX_DELAY) == pdPASS)
-////	{
-////	char *str2 = " Successfully sent the to the queue\nLeaving SENDER2_Task\n\n\n";
-////	HAL_UART_Transmit(&huart2, (uint8_t *)str2, strlen (str2), HAL_MAX_DELAY);
-////	}
-////	indx1 = indx1+1;
-////	vTaskDelay(TickDelay);
-////	}
-//}
 
 void Receiver_Task (void *argument)	//se la ham pid_compute()
 {
 	MPU6050_t *Rptrtostruct;
-	uint32_t TickDelay = pdMS_TO_TICKS(3000);
-	char *ptr;
+	uint32_t TickDelay = pdMS_TO_TICKS(4000);
 	while (1)
 	{
-		char *str = "Entered RECEIVER Task\n about to RECEIVE FROM the queue\n\n";
-		HAL_UART_Transmit(&huart2, (uint8_t *)str, strlen(str), HAL_MAX_DELAY);
+
 		/**** RECEIVE FROM QUEUE *****/
 		if (xQueueReceive(St_Queue_Handler, &Rptrtostruct, portMAX_DELAY) == pdPASS)
 		{
-			ptr = pvPortMalloc(100 * sizeof (char)); // allocate memory for the string
-//			sprintf (ptr, "Received from QUEUE:\n Accel_X_RAW = %d\n Accel_Y_RAW = %d\n Accel_Z_RAW = %d\n\n\n",Rptrtostruct->Accel_X_RAW,Rptrtostruct->Accel_Y_RAW, Rptrtostruct->Accel_Z_RAW);
-			sprintf (ptr, "Accel_X_RAW = %d\n Accel_Y_RAW = %d\n Accel_Z_RAW = %d\n\n\n",Rptrtostruct->Accel_X_RAW,Rptrtostruct->Accel_Y_RAW, Rptrtostruct->Accel_Z_RAW);
-			HAL_UART_Transmit(&huart2, (uint8_t *)ptr, strlen(ptr), HAL_MAX_DELAY);
-			vPortFree(ptr);  // free the string memory
+		    vPortFree(Rptrtostruct);
 		}
-		vPortFree(Rptrtostruct);  // free the structure memory
+
 		vTaskDelay(TickDelay);
 	}
 }
 
-//void Receiver_Task (void *argument)
-//{
-//	my_struct *Rptrtostruct;
-//	uint32_t TickDelay = pdMS_TO_TICKS(3000);
-//	char *ptr;
-//	while (1)
-//	{
-//	char *str = "Entered RECEIVER Task\n about to RECEIVE FROM the queue\n\n";
-//	HAL_UART_Transmit(&huart2, (uint8_t *)str, strlen (str), HAL_MAX_DELAY);
-//	/**** RECEIVE FROM QUEUE *****/
-//	if (xQueueReceive(St_Queue_Handler, &Rptrtostruct, portMAX_DELAY) == pdPASS)
-//	{
-//	ptr = pvPortMalloc(100 * sizeof (char)); // allocate memory for the string
-//	sprintf (ptr, "Received from QUEUE:\n COUNTER = %d\n LARGE VALUE = %u\n STRING = %s\n\n\n",Rptrtostruct->counter,Rptrtostruct->large_value, Rptrtostruct->str);
-//	HAL_UART_Transmit(&huart2, (uint8_t *)ptr, strlen(ptr), HAL_MAX_DELAY);
-//	vPortFree(ptr);  // free the string memory
-//	}
-//	vPortFree(Rptrtostruct);  // free the structure memory
-//	vTaskDelay(TickDelay);
-//	}
-//}
 /* USER CODE END 4 */
-
-/* USER CODE BEGIN Header_StartDefaultTask */
-/**
-  * @brief  Function implementing the defaultTask thread.
-  * @param  argument: Not used
-  * @retval None
-  */
-/* USER CODE END Header_StartDefaultTask */
-//void StartDefaultTask(void const * argument)
-//{
-//  /* USER CODE BEGIN 5 */
-//  /* Infinite loop */
-//  for(;;)
-//  {
-//    osDelay(1);
-//  }
-//  /* USER CODE END 5 */
-//}
 
 /**
   * @brief  Period elapsed callback in non blocking mode
